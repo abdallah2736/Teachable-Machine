@@ -18,15 +18,5 @@ This project is a simple yet powerful image classification web app built using *
 3. Integrated into a responsive web UI.
 4. Hosted directly on GitHub Pages.
 
-## 📁 Project Structure
-```
-├── index.html         # Main web application file
-├── /images            # (Optional) Folder to hold screenshots
-```
-
-## 👤 Author
-**Abdullah Fadhlallah**  
-University ID: 444002736
-
 ## 📄 License
 This project is for educational/demo purposes and uses freely available open-source tools.
