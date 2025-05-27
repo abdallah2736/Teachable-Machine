@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Animal Classifier</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.20.0/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #1a1a1a;
+      --surface-light: #2a2a2a;
+      --accent: #00d4aa;
+      --accent-hover: #00b894;
+      --text: #ffffff;
+      --text-secondary: #b0b0b0;
+      --error: #ff6b6b;
+      --success: #51cf66;
+      --border: #404040;
+    }
+
+    * { 
+      box-sizing: border-box; 
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: linear-gradient(135deg, var(--bg) 0%, #1a1a2e 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 1rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      background: var(--surface);
+      backdrop-filter: blur(20px);
+      padding: 2.5rem;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      width: 100%;
+      max-width: 600px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), #6c63ff, var(--accent));
+      animation: shimmer 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes shimmer {
+      0% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    h2 { 
+      margin-bottom: 2rem;
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), #6c63ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .upload-zone {
+      border: 2px dashed var(--border);
+      padding: 3rem 2rem;
+      border-radius: 16px;
+      margin-bottom: 2rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: var(--surface-light);
+      position: relative;
+      overflow: hidden;
+      display: block;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--accent);
+      background: rgba(0, 212, 170, 0.05);
+      transform: translateY(-2px);
+    }
+
+    .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(0, 212, 170, 0.1);
+      animation: pulse 0.6s ease-in-out;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    .upload-zone-content {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      pointer-events: none;
+    }
+
+    .upload-zone-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      display: block;
+      pointer-events: none;
+    }
+
+    #preview {
+      max-width: 300px;
+      max-height: 300px;
+      margin: 1rem auto;
+      display: none;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      object-fit: cover;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+
+    button {
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      color: #000;
+      border: none;
+      padding: 1rem 2rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      min-width: 140px;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 212, 170, 0.3);
+    }
+
+    button:disabled {
+      background: var(--border);
+      color: var(--text-secondary);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .loading {
+      position: relative;
+    }
+
+    .loading::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      right: 1rem;
+      width: 16px;
+      height: 16px;
+      border: 2px solid transparent;
+      border-top: 2px solid currentColor;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      transform: translateY(-50%);
+    }
+
+    @keyframes spin {
+      0% { transform: translateY(-50%) rotate(0deg); }
+      100% { transform: translateY(-50%) rotate(360deg); }
+    }
+
+    .results {
+      margin-top: 2rem;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.5s ease;
+    }
+
+    .results.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .prediction-card {
+      background: linear-gradient(135deg, var(--surface-light), #2d2d2d);
+      padding: 1.2rem;
+      border-radius: 12px;
+      margin-bottom: 0.8rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid var(--border);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .prediction-card:hover {
+      transform: translateX(4px);
+      border-color: var(--accent);
+    }
+
+    .prediction-card::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--accent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .prediction-card:hover::before {
+      opacity: 1;
+    }
+
+    .prediction-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .emoji {
+      font-size: 2rem;
+      animation: bounce 2s ease-in-out infinite;
+    }
+
+    @keyframes bounce {
+      0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-4px); }
+      60% { transform: translateY(-2px); }
+    }
+
+    .prediction-label {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+
+    .confidence-bar {
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+      width: 120px;
+    }
+
+    .confidence-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #6c63ff);
+      border-radius: 3px;
+      transition: width 1s ease;
+      position: relative;
+    }
+
+    .confidence-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shine 2s ease-in-out infinite;
+    }
+
+    @keyframes shine {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .confidence-text {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .error-message {
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid var(--error);
+      color: var(--error);
+      padding: 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .status-message {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 8px;
+      font-weight: 500;
+      display: none;
+    }
+
+    .status-message.info {
+      background: rgba(0, 212, 170, 0.1);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+
+    .file-info {
+      margin-top: 1rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .container {
+        padding: 1.5rem;
+        margin: 0.5rem;
+      }
+      
+      .button-group {
+        flex-direction: column;
+      }
+      
+      button {
+        width: 100%;
+      }
+      
+      h2 {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>مصنف الحيوانات بالذكاء الاصطناعي 🐾</h2>
+    
+    <label class="upload-zone" id="drop-zone" for="input-file" role="button" tabindex="0" aria-label="ارفع أو اسحب ملف صورة">
+      <span class="upload-zone-icon">📷</span>
+      <div class="upload-zone-content">
+        <strong>اضغط للرفع</strong> أو اسحب وأسقط صورة
+        <br><small>يدعم JPG, PNG, WebP (الحد الأقصى 10 ميجابايت)</small>
+      </div>
+    </label>
+    
+    <input type="file" id="input-file" accept="image/jpeg,image/png,image/webp" hidden aria-label="اختر ملف صورة" />
+    
+    <img id="preview" alt="معاينة الصورة المحددة" />
+    
+    <div class="file-info" id="file-info"></div>
+    
+    <div class="button-group">
+      <button id="classify-btn" disabled aria-label="تصنيف الصورة المرفوعة">
+        تصنيف الصورة
+      </button>
+      <button id="clear-btn" style="background: var(--border); color: var(--text);" aria-label="مسح الصورة الحالية">
+        مسح
+      </button>
+    </div>
+    
+    <div class="status-message" id="status-message"></div>
+    <div class="error-message" id="error-message"></div>
+    
+    <div class="results" id="predictions" role="region" aria-label="Classification results"></div>
+  </div>
+
+  <script>
+    // Enhanced animal classifier with better error handling and features
+    class AnimalClassifier {
+      constructor() {
+        this.model = null;
+        this.isLoading = false;
+        this.currentImageUrl = null;
+        
+        // Arabic to emoji mapping based on your model classes
+        this.emojiMap = {
+          // Arabic animal names
+          'اريب': '🐰', // rabbit
+          'اسد': '🦁', // lion  
+          'نمر': '🐯', // tiger
+          'فار': '🐭', // mouse
+          'قطط': '🐱', // cats
+          // English fallbacks
+          rabbit: '🐰', lion: '🦁', tiger: '🐯', mouse: '🐭', cat: '🐱',
+          // Additional animals
+          elephant: '🐘', horse: '🐴', cow: '🐄', pig: '🐷', sheep: '🐑',
+          bird: '🐦', eagle: '🦅', penguin: '🐧', fish: '🐟', shark: '🦈',
+          bear: '🐻', panda: '🐼', monkey: '🐵', fox: '🦊', wolf: '🐺',
+          deer: '🦌', giraffe: '🦒', zebra: '🦓', rhinoceros: '🦏'
+        };
+        
+        this.init();
+      }
+
+      async init() {
+        try {
+          this.showStatus('تحميل نموذج الذكاء الاصطناعي...', 'info');
+          
+          // Load your actual Teachable Machine model
+          const MODEL_URL = "https://teachablemachine.withgoogle.com/models/gBpTpmcEM/";
+          const modelURL = MODEL_URL + "model.json";
+          const metadataURL = MODEL_URL + "metadata.json";
+          
+          this.model = await tmImage.load(modelURL, metadataURL);
+          
+          this.showStatus('النموذج جاهز! ارفع صورة للتصنيف.', 'info');
+          this.enableClassifyButton();
+          
+        } catch (error) {
+          console.error('Initialization failed:', error);
+          this.showError('فشل في تحميل النموذج. يرجى تحديث الصفحة.');
+        }
+      }
+
+      async createDemoModel() {
+        // Create a simple demo model for demonstration
+        // In production, replace with: this.model = await tf.loadLayersModel('path/to/your/model.json');
+        
+        const model = tf.sequential({
+          layers: [
+            tf.layers.flatten({ inputShape: [224, 224, 3] }),
+            tf.layers.dense({ units: 128, activation: 'relu' }),
+            tf.layers.dense({ units: 5, activation: 'softmax' })
+          ]
+        });
+        
+        // Compile the model
+        model.compile({
+          optimizer: 'adam',
+          loss: 'categoricalCrossentropy',
+          metrics: ['accuracy']
+        });
+        
+        this.model = model;
+        this.demoClasses = ['cat', 'dog', 'lion', 'tiger', 'rabbit'];
+      }
+
+      setupEventListeners() {
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('input-file');
+        const classifyBtn = document.getElementById('classify-btn');
+        const clearBtn = document.getElementById('clear-btn');
+
+        // File input handling
+        fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        
+        // Drag and drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+          }
+        });
+
+        // Drag events
+        ['dragenter', 'dragover'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => this.handleDragEnter(e));
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => this.handleDragLeave(e));
+        });
+
+        dropZone.addEventListener('drop', (e) => this.handleDrop(e));
+
+        // Button events
+        classifyBtn.addEventListener('click', () => this.classify());
+        clearBtn.addEventListener('click', () => this.clearImage());
+      }
+
+      handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+          this.processFile(file);
+        }
+      }
+
+      handleDragEnter(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        document.getElementById('drop-zone').classList.add('dragover');
+      }
+
+      handleDragLeave(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        document.getElementById('drop-zone').classList.remove('dragover');
+      }
+
+      handleDrop(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        document.getElementById('drop-zone').classList.remove('dragover');
+        
+        const files = event.dataTransfer.files;
+        if (files.length > 0) {
+          this.processFile(files[0]);
+        }
+      }
+
+      processFile(file) {
+        // Validate file
+        if (!this.validateFile(file)) return;
+
+        // Clean up previous image URL
+        if (this.currentImageUrl) {
+          URL.revokeObjectURL(this.currentImageUrl);
+        }
+
+        // Create new object URL
+        this.currentImageUrl = URL.createObjectURL(file);
+        
+        // Display preview
+        const preview = document.getElementById('preview');
+        preview.src = this.currentImageUrl;
+        preview.style.display = 'block';
+        
+        // Show file info
+        this.showFileInfo(file);
+        
+        // Enable classify button
+        this.enableClassifyButton();
+        
+        // Clear previous results
+        this.clearResults();
+        this.hideError();
+      }
+
+      validateFile(file) {
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+        if (!allowedTypes.includes(file.type)) {
+          this.showError('يرجى رفع ملف صورة صالح (JPG, PNG, أو WebP)');
+          return false;
+        }
+
+        if (file.size > maxSize) {
+          this.showError('يجب أن يكون حجم الملف أقل من 10 ميجابايت');
+          return false;
+        }
+
+        return true;
+      }
+
+      showFileInfo(file) {
+        const fileInfo = document.getElementById('file-info');
+        const sizeKB = Math.round(file.size / 1024);
+        fileInfo.textContent = `📁 ${file.name} (${sizeKB} KB)`;
+        fileInfo.style.display = 'block';
+      }
+
+      async classify() {
+        if (this.isLoading) return;
+        
+        const fileInput = document.getElementById('input-file');
+        if (!fileInput.files[0]) {
+          this.showError('يرجى اختيار صورة أولاً');
+          return;
+        }
+
+        try {
+          this.isLoading = true;
+          this.setLoadingState(true);
+          this.hideError();
+          
+          // Make prediction using Teachable Machine model
+          const predictions = await this.predict();
+          
+          // Display results
+          this.displayResults(predictions);
+          
+        } catch (error) {
+          console.error('Classification failed:', error);
+          this.showError('فشل التصنيف. يرجى المحاولة مرة أخرى.');
+        } finally {
+          this.isLoading = false;
+          this.setLoadingState(false);
+        }
+      }
+
+      async loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = src;
+        });
+      }
+
+      preprocessImage(image) {
+        // Convert image to tensor and resize to 224x224
+        const tensor = tf.browser.fromPixels(image)
+          .resizeNearestNeighbor([224, 224])
+          .toFloat()
+          .div(255.0)
+          .expandDims();
+        
+        return tensor;
+      }
+
+      async predict(tensor) {
+        // Use the actual Teachable Machine model for prediction
+        const image = document.getElementById('preview');
+        const predictions = await this.model.predict(image);
+        
+        // Sort predictions by probability (highest first)
+        const sortedPredictions = predictions
+          .map(pred => ({
+            className: pred.className,
+            probability: pred.probability
+          }))
+          .sort((a, b) => b.probability - a.probability);
+        
+        return sortedPredictions;
+      }
+
+      displayResults(predictions) {
+        const resultsDiv = document.getElementById('predictions');
+        resultsDiv.innerHTML = '';
+
+        predictions.forEach((prediction, index) => {
+          const card = document.createElement('div');
+          card.className = 'prediction-card';
+          card.style.animationDelay = `${index * 0.1}s`;
+
+          const info = document.createElement('div');
+          info.className = 'prediction-info';
+
+          const emoji = document.createElement('span');
+          emoji.className = 'emoji';
+          emoji.textContent = this.emojiMap[prediction.className] || '🐾';
+
+          const labelDiv = document.createElement('div');
+          
+          const label = document.createElement('div');
+          label.className = 'prediction-label';
+          label.textContent = prediction.className.charAt(0).toUpperCase() + prediction.className.slice(1);
+          
+          const confidenceBar = document.createElement('div');
+          confidenceBar.className = 'confidence-bar';
+          
+          const confidenceFill = document.createElement('div');
+          confidenceFill.className = 'confidence-fill';
+          
+          // Animate confidence bar
+          setTimeout(() => {
+            confidenceFill.style.width = `${prediction.probability * 100}%`;
+          }, index * 100 + 200);
+          
+          confidenceBar.appendChild(confidenceFill);
+          labelDiv.appendChild(label);
+          labelDiv.appendChild(confidenceBar);
+
+          const confidence = document.createElement('span');
+          confidence.className = 'confidence-text';
+          confidence.textContent = `${(prediction.probability * 100).toFixed(1)}%`;
+
+          info.appendChild(emoji);
+          info.appendChild(labelDiv);
+          card.appendChild(info);
+          card.appendChild(confidence);
+          
+          resultsDiv.appendChild(card);
+        });
+
+        resultsDiv.classList.add('show');
+      }
+
+      clearImage() {
+        // Clean up object URL
+        if (this.currentImageUrl) {
+          URL.revokeObjectURL(this.currentImageUrl);
+          this.currentImageUrl = null;
+        }
+
+        // Clear UI elements
+        document.getElementById('input-file').value = '';
+        document.getElementById('preview').style.display = 'none';
+        document.getElementById('file-info').style.display = 'none';
+        
+        this.clearResults();
+        this.hideError();
+        this.hideStatus();
+        
+        this.disableClassifyButton();
+      }
+
+      clearResults() {
+        const resultsDiv = document.getElementById('predictions');
+        resultsDiv.classList.remove('show');
+        setTimeout(() => {
+          resultsDiv.innerHTML = '';
+        }, 300);
+      }
+
+      enableClassifyButton() {
+        const btn = document.getElementById('classify-btn');
+        btn.disabled = false;
+      }
+
+      disableClassifyButton() {
+        const btn = document.getElementById('classify-btn');
+        btn.disabled = true;
+      }
+
+      setLoadingState(loading) {
+        const btn = document.getElementById('classify-btn');
+        if (loading) {
+          btn.textContent = 'جاري التحليل...';
+          btn.classList.add('loading');
+          btn.disabled = true;
+        } else {
+          btn.textContent = 'تصنيف الصورة';
+          btn.classList.remove('loading');
+          btn.disabled = false;
+        }
+      }
+
+      showError(message) {
+        const errorDiv = document.getElementById('error-message');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+      }
+
+      hideError() {
+        document.getElementById('error-message').style.display = 'none';
+      }
+
+      showStatus(message, type = 'info') {
+        const statusDiv = document.getElementById('status-message');
+        statusDiv.textContent = message;
+        statusDiv.className = `status-message ${type}`;
+        statusDiv.style.display = 'block';
+      }
+
+      hideStatus() {
+        document.getElementById('status-message').style.display = 'none';
+      }
+    }
+
+    // Initialize the application
+    let classifier;
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      classifier = new AnimalClassifier();
+      classifier.setupEventListeners();
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (classifier && classifier.currentImageUrl) {
+        URL.revokeObjectURL(classifier.currentImageUrl);
+      }
+    });
+  </script>
+</body>
+</html>
